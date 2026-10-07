@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light dark}body{margin:0;font:14px system-ui;background:#f2f4f8}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Interpolador de Newton</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;700;900&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#f2f4f8; --panel:#ffffff; --panel-2:#e9edf4;
+    --line:#cdd6e4; --line-soft:#dfe5ef;
+    --ink:#101c33; --ink-2:#3c4a63; --ink-3:#6b7a93;
+    --brand:#14366b; --brand-soft:#e4ebf7;
+    --amber:#c8890a; --amber-soft:#fbf0d6;
+    --ok:#1d7a5f; --ok-soft:#dff0e9; --crit:#a32330;
+    --shadow:0 1px 2px rgba(16,28,51,.07),0 8px 24px -16px rgba(16,28,51,.4);
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --body:"Source Sans 3",system-ui,-apple-system,Segoe UI,sans-serif;
+    --display:"Chivo","Source Sans 3",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0c1422; --panel:#131d30; --panel-2:#1a2639;
+      --line:#2b3a53; --line-soft:#223047;
+      --ink:#e7ecf5; --ink-2:#b2bed3; --ink-3:#8494ad;
+      --brand:#7fa5e0; --brand-soft:#1b2b47;
+      --amber:#e8b64a; --amber-soft:#332a14;
+      --ok:#5fc39c; --ok-soft:#14322a; --crit:#ef7b86;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0c1422; --panel:#131d30; --panel-2:#1a2639;
+    --line:#2b3a53; --line-soft:#223047;
+    --ink:#e7ecf5; --ink-2:#b2bed3; --ink-3:#8494ad;
+    --brand:#7fa5e0; --brand-soft:#1b2b47;
+    --amber:#e8b64a; --amber-soft:#332a14;
+    --ok:#5fc39c; --ok-soft:#14322a; --crit:#ef7b86;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.9);
+  }
+
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;margin:0}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 18px;padding-block:0 48px}
+
+  .bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--ground) 90%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .bar-in{max-width:1240px;margin:0 auto;padding:9px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .mark{font-family:var(--display);font-weight:900;letter-spacing:-.02em;font-size:14px;white-space:nowrap}
+  .mark span{color:var(--amber)}
+  .tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .sizer{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;color:var(--ink-3);border:1px solid var(--line);border-radius:5px;padding:3px 7px}
+  .sizer b{color:var(--ink);font-size:14px;min-width:1.5ch;text-align:center}
+  .stepper{display:flex;gap:3px}
+  .stepper button{width:24px;height:24px;padding:0;font-size:15px;line-height:1;display:grid;place-items:center}
+  button{font-family:var(--body);font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 11px;border-radius:4px}
+  button:hover:enabled{border-color:var(--brand);color:var(--brand)}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button.primary{background:var(--brand);border-color:var(--brand);color:var(--ground)}
+  button.primary:hover:enabled{color:var(--ground);opacity:.88}
+  input:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+  .app{display:grid;grid-template-columns:minmax(280px,330px) 1fr;gap:16px;align-items:start;padding-block:16px}
+  @media (max-width:920px){.app{grid-template-columns:1fr}}
+  .col{display:grid;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow);overflow:hidden}
+  .card > header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid var(--line-soft);background:var(--panel-2)}
+  .card > header h2{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-2);font-weight:500}
+  .bd{padding:14px}
+  .bd.tight{padding:0}
+  .xscroll{overflow-x:auto}
+
+  input[type="number"]{width:78px;font-family:var(--mono);font-size:13.5px;font-variant-numeric:tabular-nums;text-align:right;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--ground);color:var(--ink);-moz-appearance:textfield}
+  input[type="number"]::-webkit-outer-spin-button,input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .nodes{display:grid;gap:6px}
+  .nodehd{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);padding-bottom:2px}
+  .noderow{display:grid;grid-template-columns:28px 1fr 1fr;gap:8px;align-items:center}
+  .noderow b{font-family:var(--mono);font-size:11.5px;color:var(--ink-3);font-weight:500}
+  .noderow input{width:100%}
+  .evalbox{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft);font-size:13.5px;color:var(--ink-2)}
+  .evalbox input{width:100%;background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+  .rowbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+
+  .chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+  .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--ink-3)}
+  .chip.ok{background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 40%,transparent);color:var(--ok)}
+  .chip.ok::before{background:var(--ok)}
+  .chip.bad{background:color-mix(in srgb,var(--crit) 12%,transparent);border-color:color-mix(in srgb,var(--crit) 40%,transparent);color:var(--crit)}
+  .chip.bad::before{background:var(--crit)}
+
+  .hero{padding:16px 16px 14px;border-bottom:1px solid var(--line-soft)}
+  .hero small{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);display:block}
+  .hero strong{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.03em;display:block;margin-top:2px;color:var(--amber);font-variant-numeric:tabular-nums}
+  .hero em{font-style:normal;font-size:13px;color:var(--ink-3)}
+
+  .poly{font-family:var(--mono);font-size:13px;padding:10px 12px;background:var(--panel-2);border-radius:4px;color:var(--ink);word-break:break-word}
+  .poly + .poly{margin-top:6px;color:var(--ink-2)}
+
+  table{border-collapse:collapse;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;width:100%}
+  th,td{padding:6px 9px;text-align:right;border-bottom:1px solid var(--line-soft);white-space:nowrap}
+  th{font-weight:500;color:var(--ink-3);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;background:var(--panel-2)}
+  tr:last-child td{border-bottom:0}
+  td.lbl,th.lbl{text-align:left;color:var(--ink-3);font-size:11.5px}
+  td.frm{text-align:left;color:var(--ink-2);font-size:12px}
+  tr.sum td{background:var(--panel-2);font-weight:600}
+  tr.sum td.lbl{color:var(--ink-2)}
+  td.acc{color:var(--amber);font-weight:600}
+
+  .chartwrap{position:relative;padding:12px 12px 6px}
+  canvas{width:100%;height:340px;display:block;touch-action:none}
+  .tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:5px 9px;font-family:var(--mono);font-size:11.5px;color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;transform:translate(-50%,-140%)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;padding:0 14px 12px;font-size:12.5px;color:var(--ink-2)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .key{width:14px;height:3px;border-radius:2px;background:var(--brand)}
+  .key.dot{width:9px;height:9px;border-radius:50%;background:var(--ink)}
+  .key.acc{width:9px;height:9px;border-radius:50%;background:var(--amber)}
+
+  .note{padding:10px 14px;font-size:13px;color:var(--ink-2);background:var(--panel-2);border-bottom:1px solid var(--line-soft)}
+  .note.bad{background:color-mix(in srgb,var(--crit) 10%,transparent);color:var(--crit)}
+  details{border-top:1px solid var(--line)}
+  summary{cursor:pointer;padding:11px 14px;font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";color:var(--amber)}
+  details[open] summary::before{content:"▾ "}
+  pre{font-family:var(--mono);font-size:12px;line-height:1.55;margin:0;padding:0 14px 14px;overflow-x:auto;color:var(--ink)}
+  .cmt{color:var(--ink-3)} .kw{color:var(--brand);font-weight:600} .num{color:var(--amber)}
+  .slide{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:2px 14px 12px;font-family:var(--mono);font-size:12px;color:var(--ink-3)}
+  .slide input{width:100%;min-width:0;accent-color:var(--brand)}
+  .slide output{color:var(--amber);font-weight:600;font-size:13px;white-space:nowrap}
+  .degs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 14px 10px;font-family:var(--mono);font-size:11px;color:var(--ink-3)}
+  .degs button{font-family:var(--mono);font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:999px}
+  .degs button.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:600}
+  td.c0{background:var(--amber-soft);color:var(--ink);font-weight:600}
+  td.nil{background:var(--panel-2)}
+  .ddlist{padding:0 14px 14px;font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--ink-2);overflow-x:auto;white-space:nowrap}
+  .ddlist h3{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500;margin:10px 0 2px}
+  .ddlist h3:first-child{margin-top:0}
+  .ddlist b{color:var(--ink)}
+  .ddlist p{margin:10px 0 0;font-family:var(--body);font-size:13px;white-space:normal}
+  .key.faint{background:none;border-top:2px dashed var(--ink-3);height:0}
+  .key.open{width:9px;height:9px;border-radius:50%;background:var(--panel);border:1.5px solid var(--ink-3)}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="bar">
+  <div class="bar-in">
+    <div class="mark">INTERPOLACIÓN DE <span>NEWTON</span> · DIFERENCIAS DIVIDIDAS</div>
+    <div class="tools">
+      <div class="sizer"><span>nodos =</span><b id="nval">4</b>
+        <div class="stepper"><button id="minus" aria-label="Quitar nodo">−</button><button id="plus" aria-label="Agregar nodo">+</button></div>
+      </div>
+      <button class="primary" id="btn-demo9">Caso S9 · latencia vs carga</button>
+      <button id="btn-clear">Vaciar</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="app">
+
+  <div class="col">
+    <div class="card">
+      <header><h2>Nodos (x<sub>i</sub>, y<sub>i</sub>)</h2><span class="chip" id="nodechip"></span></header>
+      <div class="bd">
+        <div class="nodehd"><span>k</span><span id="ux">x (× 100 req/s)</span><span id="uy">y (ms)</span></div>
+        <div class="nodes" id="nodes"></div>
+        <div class="evalbox">
+          <label for="xeval">x a evaluar</label><input type="number" id="xeval" step="any" value="5">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <header><h2>Resultado</h2><span class="chip" id="rangechip"></span></header>
+      <div class="hero">
+        <small id="herolbl">P₃(5)</small>
+        <strong id="heroval">—</strong>
+        <em id="herounit">latencia media estimada (ms)</em>
+      </div>
+      <div class="bd">
+        <div class="poly" id="polynew">—</div>
+        <div class="poly" id="polystd">—</div>
+        <div class="poly" id="polydec">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <header><h2>Verificación en los nodos</h2><span class="chip" id="vchip"></span></header>
+      <div class="bd tight"><div class="xscroll"><table id="verif"></table></div></div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card">
+      <header><h2>Curva del polinomio interpolador</h2><span class="chip" id="chartchip"></span></header>
+      <div class="chartwrap"><canvas id="cv"></canvas><div class="tip" id="tip" hidden></div></div>
+      <div class="slide"><label for="xs">x</label><input type="range" id="xs" min="1" max="7" step="0.05" value="5" aria-label="Recorrer la curva"><output id="xsout" for="xs"></output></div>
+      <div class="degs" id="degs"></div>
+      <div class="legend">
+        <span><i class="key"></i> P<sub id="deg1">3</sub>(x) interpolante</span>
+        <span><i class="key dot"></i> puntos medidos</span>
+        <span><i class="key acc"></i> punto interpolado</span>
+        <span id="lg-full" hidden><i class="key faint"></i> polinomio con todos los puntos</span>
+        <span id="lg-open" hidden><i class="key open"></i> puntos que ese grado no usa</span>
+      </div>
+      <div class="xscroll" id="degwrap"><table id="degtable"></table></div>
+    </div>
+
+    <div class="card" id="card-dd">
+      <header><h2>Tabla de diferencias divididas</h2><span class="chip ok" id="ddchip"></span></header>
+      <div class="xscroll"><table id="dd"></table></div>
+      <details open>
+        <summary>De dónde sale cada casilla</summary>
+        <div class="ddlist" id="ddsteps"></div>
+      </details>
+    </div>
+
+    <div class="card">
+      <header><h2>Pasos del reemplazo numérico</h2><span class="chip" id="sumchip"></span></header>
+      <div id="note"></div>
+      <div class="xscroll"><table id="steps"></table></div>
+    </div>
+
+    <div class="card" id="card-nest">
+      <header><h2>Evaluación anidada</h2><span class="chip" id="nestchip"></span></header>
+      <div class="note">P(x) = c₀ + (x − x₀)·( c₁ + (x − x₁)·( c₂ + … ) ). Se recorre de adentro hacia afuera y el resultado es b₀.</div>
+      <div class="xscroll"><table id="nest"></table></div>
+      <details>
+        <summary>Motor de cálculo en Python — diferencias divididas y evaluación anidada</summary>
+<pre><span class="kw">def</span> diferencias_divididas(X, Y):
+    <span class="cmt">"""Matriz triangular: T[i][j] = f[x_i, ..., x_{i+j}]"""</span>
+    n = len(X)
+    T = [[<span class="num">0.0</span>] * n <span class="kw">for</span> _ <span class="kw">in</span> range(n)]
+    <span class="kw">for</span> i <span class="kw">in</span> range(n):
+        T[i][<span class="num">0</span>] = Y[i]
+    <span class="kw">for</span> j <span class="kw">in</span> range(<span class="num">1</span>, n):            <span class="cmt"># columna = orden de la diferencia</span>
+        <span class="kw">for</span> i <span class="kw">in</span> range(n - j):       <span class="cmt"># fila</span>
+            T[i][j] = (T[i+<span class="num">1</span>][j-<span class="num">1</span>] - T[i][j-<span class="num">1</span>]) / (X[i+j] - X[i])
+    <span class="kw">return</span> T
+
+<span class="kw">def</span> evaluar_newton(coefs, X, x):
+    <span class="cmt">"""Multiplicación anidada: n productos y n sumas"""</span>
+    p = coefs[-<span class="num">1</span>]
+    <span class="kw">for</span> k <span class="kw">in</span> range(len(coefs) - <span class="num">2</span>, -<span class="num">1</span>, -<span class="num">1</span>):
+        p = coefs[k] + (x - X[k]) * p
+    <span class="kw">return</span> p
+
+X = [<span class="num">1</span>, <span class="num">2</span>, <span class="num">4</span>, <span class="num">7</span>]            <span class="cmt"># carga (x 100 req/s)</span>
+Y = [<span class="num">45</span>, <span class="num">65</span>, <span class="num">110</span>, <span class="num">220</span>]      <span class="cmt"># latencia media (ms)</span>
+T = diferencias_divididas(X, Y)
+print(<span class="cmt">"P3(5) ="</span>, evaluar_newton(T[<span class="num">0</span>], X, <span class="num">5</span>))   <span class="cmt"># 139.0 ms</span></pre>
+      </details>
+    </div>
+
+  </div>
+
+</div>
+</div>
+
+<script>
+(function(){
+  var DEMO9={x:[1,2,4,7],y:[45,65,110,220],xe:5,ux:"x (× 100 req/s)",uy:"y (ms)"};
+  var X=DEMO9.x.slice(), Y=DEMO9.y.slice(), xe=DEMO9.xe;
+  var DEG=null, NC=null;                     /* grado elegido (null = todos los puntos) y coeficientes de Newton */
+  var $=function(id){return document.getElementById(id);};
+  var SUB="₀₁₂₃₄₅₆₇₈₉";
+  function sb(i){ var s="",t=String(i),k; for(k=0;k<t.length;k++) s+=SUB[+t[k]]; return s; }
+  function fmt(v,d){
+    if(v===undefined||!isFinite(v)) return "—";
+    var r=Math.round(v*1e10)/1e10;
+    if(Math.abs(r)<1e-12) return "0";
+    if(Math.abs(r-Math.round(r))<1e-9) return String(Math.round(r));
+    return r.toFixed(d===undefined?4:d);
+  }
+
+  /* ---------- fracciones exactas (solo si los datos son enteros) ---------- */
+  function gcd(a,b){ a=a<0n?-a:a; b=b<0n?-b:b; while(b){ var t=a%b; a=b; b=t; } return a; }
+  function fr(n,d){ if(d<0n){ n=-n; d=-d; } var g=gcd(n,d)||1n; return [n/g,d/g]; }
+  function frAdd(a,b){ return fr(a[0]*b[1]+b[0]*a[1], a[1]*b[1]); }
+  function frMul(a,b){ return fr(a[0]*b[0], a[1]*b[1]); }
+  function frTxt(a){ return a[1]===1n?String(a[0]):(a[0]+"/"+a[1]); }
+  function frSub(a,b){ return frAdd(a,[-b[0],b[1]]); }
+  function frDiv(a,b){ return fr(a[0]*b[1], a[1]*b[0]); }
+  function menos(t){ return t.replace("-","−"); }
+  function par(t){ return (t.charAt(0)==="−"||t.charAt(0)==="-")?"("+t+")":t; }
+  function f4(v){ return (v!==0&&Math.abs(v)<0.01)?fmt(v,6):fmt(v,4); }
+  function enteros(){ return X.concat(Y).every(function(v){ return Number.isInteger(v); }); }
+
+  /* forma estándar: se desarrolla la forma de Newton,  p(x) ← p(x)·(x − x_k) + c_k */
+  function coefExactos(){
+    var c=ddExacta()[0], p=[c[c.length-1]], k, j;
+    for(k=c.length-2;k>=0;k--){
+      var nue=p.concat([[0n,1n]]);
+      for(j=0;j<p.length;j++) nue[j+1]=frAdd(nue[j+1],frMul(p[j],[-BigInt(X[k]),1n]));
+      nue[nue.length-1]=frAdd(nue[nue.length-1],c[k]);
+      p=nue;
+    }
+    return p;
+  }
+  function coefDecimales(){
+    var c=ddTabla()[0], p=[c[c.length-1]], k, j;
+    for(k=c.length-2;k>=0;k--){
+      var nue=p.concat([0]);
+      for(j=0;j<p.length;j++) nue[j+1]-=p[j]*X[k];
+      nue[nue.length-1]+=c[k];
+      p=nue;
+    }
+    return p;
+  }
+  function polyTxt(coef,txt){
+    var g=coef.length-1, out="", j;
+    for(j=0;j<coef.length;j++){
+      var c=coef[j], s=txt(c), neg=s.charAt(0)==="-";
+      if(s==="0") continue;
+      if(neg) s=s.slice(1);
+      out+= out? (neg?" − ":" + ") : (neg?"−":"");
+      var e=g-j;
+      out+= (e===0? s : (s==="1"? "" : s+"·")) + (e===0?"":(e===1?"x":"x"+["","","²","³","⁴","⁵","⁶","⁷","⁸"][e]));
+    }
+    return out||"0";
+  }
+
+  /* ---------- interpolación ---------- */
+  function P(x){ return newtonEval(NC||ddTabla()[0],x,X.length-1); }   /* polinomio con todos los puntos */
+
+  /* ---------- Newton: tabla de diferencias divididas ---------- */
+  function ddTabla(){                       /* T[i][j] = f[x_i, …, x_{i+j}] */
+    var n=X.length, T=[], i, j;
+    for(i=0;i<n;i++) T.push([Y[i]]);
+    for(j=1;j<n;j++) for(i=0;i<n-j;i++) T[i][j]=(T[i+1][j-1]-T[i][j-1])/(X[i+j]-X[i]);
+    return T;
+  }
+  function ddExacta(){                      /* la misma tabla en fracciones, si los datos son enteros */
+    var n=X.length, T=[], i, j;
+    for(i=0;i<n;i++) T.push([[BigInt(Y[i]),1n]]);
+    for(j=1;j<n;j++) for(i=0;i<n-j;i++) T[i][j]=frDiv(frSub(T[i+1][j-1],T[i][j-1]),[BigInt(X[i+j]-X[i]),1n]);
+    return T;
+  }
+  function newtonEval(c,x,k){               /* evaluación anidada hasta el grado k */
+    var p=c[k], i; for(i=k-1;i>=0;i--) p=c[i]+(x-X[i])*p; return p;
+  }
+  function grado(){ var n=X.length-1; return (DEG!==null&&DEG<n)?DEG:n; }
+  function curva(x){ return NC?newtonEval(NC,x,grado()):P(x); }
+  function newtonTxt(c,cx,k){
+    var out="", i, j;
+    for(i=0;i<=k;i++){
+      if(Math.abs(c[i])<1e-12) continue;
+      var t=cx(i), neg=t.charAt(0)==="−"; if(neg) t=t.slice(1);
+      var fac=""; for(j=0;j<i;j++) fac+= X[j]===0 ? "x" : "(x "+(X[j]<0?"+":"−")+" "+fmt(Math.abs(X[j]),4)+")";
+      if(i>0){ if(t==="1") t=""; else if(t.indexOf("/")>=0) t="("+t+")"; }
+      out+= (out?(neg?" − ":" + "):(neg?"−":"")) + t + fac;
+    }
+    return out||"0";
+  }
+  function cargar(d){
+    X=d.x.slice(); Y=d.y.slice(); xe=d.xe; DEG=null;
+    $("xeval").value=xe; $("ux").textContent=d.ux; $("uy").textContent=d.uy;
+    buildNodes(); render();
+  }
+
+  /* ---------- editor ---------- */
+  function buildNodes(){
+    var c=$("nodes"); c.innerHTML="";
+    X.forEach(function(v,i){
+      var row=document.createElement("div"); row.className="noderow";
+      var b=document.createElement("b"); b.textContent="x"+sb(i); row.appendChild(b);
+      [["x",X],["y",Y]].forEach(function(pair){
+        var arr=pair[1];
+        var inp=document.createElement("input");
+        inp.type="number"; inp.step="any"; inp.value=arr[i];
+        inp.setAttribute("aria-label",pair[0]+" del nodo "+i);
+        inp.oninput=function(){ var t=parseFloat(inp.value); arr[i]=isNaN(t)?0:t; render(); };
+        row.appendChild(inp);
+      });
+      c.appendChild(row);
+    });
+    $("nval").textContent=X.length;
+    $("minus").disabled=X.length<=2; $("plus").disabled=X.length>=8;
+  }
+  $("plus").onclick=function(){ if(X.length<8){ var last=X[X.length-1]; X.push(last+2); Y.push(Y[Y.length-1]); DEG=null; buildNodes(); render(); } };
+  $("minus").onclick=function(){ if(X.length>2){ X.pop(); Y.pop(); DEG=null; buildNodes(); render(); } };
+  $("btn-demo9").onclick=function(){ cargar(DEMO9); };
+  $("xs").oninput=function(){ xe=+this.value; $("xeval").value=xe; render(true); };
+  $("btn-clear").onclick=function(){ X=X.map(function(_,i){return i;}); Y=Y.map(function(){return 0;}); buildNodes(); render(); };
+  $("xeval").oninput=function(){ var t=parseFloat(this.value); xe=isNaN(t)?0:t; render(); };
+
+  /* ---------- gráfica ---------- */
+  var cv=$("cv"), ctx=cv.getContext("2d"), plot=null, hoverX=null;
+  function css(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function drawChart(){
+    var dpr=window.devicePixelRatio||1;
+    var w=cv.clientWidth||600, h=cv.clientHeight||340;
+    cv.width=w*dpr; cv.height=h*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+
+    var padL=54, padR=16, padT=14, padB=34;
+    var x0=Math.min.apply(null,X.concat([xe])), x1=Math.max.apply(null,X.concat([xe]));
+    if(x1-x0<1e-9){ x1=x0+1; }
+    var pad=(x1-x0)*0.04; x0-=pad; x1+=pad;
+
+    var N=240, xs=[], ys=[], i;
+    var kg=grado(), parcial=kg<X.length-1, yfull=[];
+    for(i=0;i<=N;i++){ var t=x0+(x1-x0)*i/N; xs.push(t); ys.push(curva(t)); if(parcial) yfull.push(P(t)); }
+    var fin=ys.filter(isFinite).concat(Y);
+    var y0=Math.min.apply(null,fin), y1=Math.max.apply(null,fin);
+    if(y1-y0<1e-9){ y1=y0+1; }
+    var yp=(y1-y0)*0.12; y0-=yp; y1+=yp;
+
+    var px=function(v){ return padL+(v-x0)/(x1-x0)*(w-padL-padR); };
+    var py=function(v){ return h-padB-(v-y0)/(y1-y0)*(h-padT-padB); };
+    plot={px:px,py:py,x0:x0,x1:x1,padL:padL,padR:padR,w:w,h:h};
+
+    var cLine=css("--line-soft"), cInk3=css("--ink-3"), cBrand=css("--brand"), cInk=css("--ink"),
+        cAmber=css("--amber"), cPanel=css("--panel");
+
+    function ticks(a,b){
+      var span=b-a, step=Math.pow(10,Math.floor(Math.log10(span/5)));
+      var err=span/5/step;
+      if(err>=7.5) step*=10; else if(err>=3.5) step*=5; else if(err>=1.5) step*=2;
+      var out=[],t=Math.ceil(a/step)*step;
+      for(;t<=b+1e-9;t+=step) out.push(Math.round(t*1e8)/1e8);
+      return out;
+    }
+    ctx.font="11px "+ (css("--mono")||"monospace");
+    ctx.strokeStyle=cLine; ctx.lineWidth=1; ctx.fillStyle=cInk3;
+
+    ticks(y0,y1).forEach(function(t){
+      var Yp=Math.round(py(t))+.5;
+      ctx.beginPath(); ctx.moveTo(padL,Yp); ctx.lineTo(w-padR,Yp); ctx.stroke();
+      ctx.textAlign="right"; ctx.textBaseline="middle";
+      ctx.fillText(fmt(t,2),padL-8,Yp);
+    });
+    ticks(x0,x1).forEach(function(t){
+      var Xp=Math.round(px(t))+.5;
+      ctx.beginPath(); ctx.moveTo(Xp,padT); ctx.lineTo(Xp,h-padB); ctx.stroke();
+      ctx.textAlign="center"; ctx.textBaseline="top";
+      ctx.fillText(fmt(t,2),Xp,h-padB+8);
+    });
+
+    /* polinomio con todos los puntos, de fondo, cuando se mira un grado menor */
+    if(parcial){
+      ctx.save(); ctx.beginPath(); ctx.rect(padL,padT,w-padL-padR,h-padT-padB); ctx.clip();
+      ctx.strokeStyle=cInk3; ctx.lineWidth=1.3; ctx.setLineDash([3,4]); ctx.beginPath();
+      for(i=0;i<xs.length;i++){ if(i) ctx.lineTo(px(xs[i]),py(yfull[i])); else ctx.moveTo(px(xs[i]),py(yfull[i])); }
+      ctx.stroke(); ctx.restore();
+    }
+
+    /* curva */
+    ctx.strokeStyle=cBrand; ctx.lineWidth=2; ctx.lineJoin="round";
+    ctx.beginPath();
+    var started=false;
+    for(i=0;i<xs.length;i++){
+      if(!isFinite(ys[i])){ started=false; continue; }
+      var Xp=px(xs[i]), Yp=py(ys[i]);
+      if(!started){ ctx.moveTo(Xp,Yp); started=true; } else ctx.lineTo(Xp,Yp);
+    }
+    ctx.stroke();
+
+    /* nodos */
+    X.forEach(function(v,k){
+      ctx.beginPath(); ctx.arc(px(v),py(Y[k]),5,0,6.2832);
+      var usado=k<=kg;
+      ctx.fillStyle=usado?cInk:cPanel; ctx.fill();
+      ctx.lineWidth=usado?2:1.6; ctx.strokeStyle=usado?cPanel:cInk3; ctx.stroke();
+    });
+
+    /* punto interpolado */
+    var pe=curva(xe);
+    if(isFinite(pe)){
+      ctx.setLineDash([3,3]); ctx.strokeStyle=cAmber; ctx.lineWidth=1.2;
+      ctx.beginPath(); ctx.moveTo(px(xe),h-padB); ctx.lineTo(px(xe),py(pe)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(px(xe),py(pe),6.5,0,6.2832);
+      ctx.fillStyle=cAmber; ctx.fill();
+      ctx.lineWidth=2; ctx.strokeStyle=cPanel; ctx.stroke();
+      ctx.fillStyle=cAmber; ctx.textAlign="left"; ctx.textBaseline="bottom";
+      ctx.fillText(fmt(xe,2)+" → "+fmt(pe,2), px(xe)+10, py(pe)-8);
+    }
+
+    /* hover */
+    if(hoverX!==null){
+      var hv=curva(hoverX);
+      if(isFinite(hv)){
+        ctx.strokeStyle=cInk3; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+        ctx.beginPath(); ctx.moveTo(px(hoverX),padT); ctx.lineTo(px(hoverX),h-padB); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(px(hoverX),py(hv),4,0,6.2832); ctx.fillStyle=cBrand; ctx.fill();
+        var tip=$("tip");
+        tip.hidden=false;
+        tip.textContent="x = "+fmt(hoverX,2)+"   P(x) = "+fmt(hv,3);
+        tip.style.left=px(hoverX)+12+"px"; tip.style.top=py(hv)+12+"px";
+      }
+    } else $("tip").hidden=true;
+  }
+  cv.addEventListener("pointermove",function(e){
+    if(!plot) return;
+    var r=cv.getBoundingClientRect(), xpx=e.clientX-r.left;
+    if(xpx<plot.padL||xpx>plot.w-plot.padR){ hoverX=null; drawChart(); return; }
+    hoverX=plot.x0+(xpx-plot.padL)/(plot.w-plot.padL-plot.padR)*(plot.x1-plot.x0);
+    drawChart();
+  });
+  cv.addEventListener("pointerleave",function(){ hoverX=null; drawChart(); });
+  window.addEventListener("resize",drawChart);
+  if(window.matchMedia) try{ window.matchMedia("(prefers-color-scheme:dark)").addEventListener("change",drawChart); }catch(e){}
+
+  /* ---------- render ---------- */
+  function render(desdeDeslizador){
+    var n=X.length, i, j, h;
+
+    var dup=false;
+    for(i=0;i<n;i++) for(j=i+1;j<n;j++) if(Math.abs(X[i]-X[j])<1e-12) dup=true;
+    $("nodechip").className="chip "+(dup?"bad":"ok");
+    $("nodechip").textContent=dup?"x repetidos":("grado "+(n-1));
+    $("deg1").textContent=n-1;
+    $("herolbl").innerHTML="P"+sb(n-1)+"("+fmt(xe,2)+")";
+
+    if(dup){
+      NC=null;
+      $("note").innerHTML='<div class="note bad">Hay dos nodos con el mismo x: el denominador de alguna diferencia dividida se vuelve cero y el polinomio no existe. Cambia uno de los valores.</div>';
+      $("heroval").textContent="—"; $("steps").innerHTML=""; $("xsout").textContent="";
+      $("polystd").textContent="—"; $("polydec").textContent="—"; $("verif").innerHTML="";
+      $("polynew").textContent="—"; $("dd").innerHTML=""; $("ddsteps").innerHTML=""; $("nest").innerHTML="";
+      $("degs").innerHTML=""; $("degtable").innerHTML="";
+      drawChart(); return;
+    }
+
+    var xmin=Math.min.apply(null,X), xmax=Math.max.apply(null,X);
+    var dentro=xe>=xmin&&xe<=xmax;
+    $("note").innerHTML='<div class="note">'+(dentro
+      ? "x = "+fmt(xe,2)+" cae dentro del rango medido ["+fmt(xmin,2)+", "+fmt(xmax,2)+"]: es <b>interpolación</b>, el caso en que el polinomio es fiable."
+      : "x = "+fmt(xe,2)+" queda fuera del rango medido ["+fmt(xmin,2)+", "+fmt(xmax,2)+"]: es <b>extrapolación</b> y el error puede crecer mucho.")+"</div>";
+    $("rangechip").className="chip "+(dentro?"ok":"bad");
+    $("rangechip").textContent=dentro?"interpolación":"extrapolación";
+
+    NC=ddTabla()[0];
+    var pe=P(xe);
+    $("heroval").textContent=fmt(pe,4);
+    renderNewton(n,pe);
+
+    /* deslizador: recorre el rango de los datos (y llega hasta x si quedó fuera) */
+    if(!desdeDeslizador){
+      var sl=$("xs"), lo=Math.min(xmin,xe), hi=Math.max(xmax,xe);
+      var paso=Math.pow(10,Math.floor(Math.log10((hi-lo)/100)));
+      sl.min=lo; sl.max=hi; sl.step=paso; sl.value=xe;
+    }
+    $("xsout").textContent="P"+sb(grado())+"("+fmt(xe,2)+") = "+f4(curva(xe));
+
+    /* polinomio en forma estándar */
+    var dec=coefDecimales();
+    if(enteros()){
+      var ex=coefExactos();
+      $("polystd").textContent="P"+sb(n-1)+"(x) = "+polyTxt(ex,frTxt);
+      $("polydec").textContent="≈ "+polyTxt(dec,function(c){ return String(Math.round(c*1e6)/1e6); });
+    } else {
+      $("polystd").textContent="P"+sb(n-1)+"(x) = "+polyTxt(dec,function(c){ return String(Math.round(c*1e6)/1e6); });
+      $("polydec").textContent="coeficientes en decimales (los nodos no son enteros)";
+    }
+
+    /* verificación */
+    h="<tr><th class='lbl'>nodo</th><th>P(x"+"ₖ"+")</th><th>y"+"ₖ"+"</th><th>error</th></tr>";
+    var maxe=0;
+    for(i=0;i<n;i++){
+      var pv=P(X[i]), er=Math.abs(pv-Y[i]); maxe=Math.max(maxe,er);
+      h+="<tr><td class='lbl'>x"+sb(i)+" = "+fmt(X[i],2)+"</td><td>"+fmt(pv,4)+"</td><td>"+fmt(Y[i],2)+"</td><td>"+er.toExponential(1)+"</td></tr>";
+    }
+    $("verif").innerHTML=h;
+    $("vchip").className="chip "+(maxe<1e-8?"ok":"bad");
+    $("vchip").textContent=maxe<1e-8?"P(x"+"ₖ"+") = y"+"ₖ"+" ✓":"error "+maxe.toExponential(1);
+    $("chartchip").className="chip";
+    $("chartchip").textContent="["+fmt(Math.min(xmin,xe),2)+", "+fmt(Math.max(xmax,xe),2)+"]";
+
+    drawChart();
+  }
+
+  /* ---------- salida del método de Newton ---------- */
+  var ORD=["","Primeras diferencias","Segundas diferencias","Terceras diferencias","Cuartas diferencias","Quintas diferencias","Sextas diferencias","Séptimas diferencias"];
+  var ORD1=["","Primera diferencia","Segunda diferencia","Tercera diferencia","Cuarta diferencia","Quinta diferencia","Sexta diferencia","Séptima diferencia"];
+  function renderNewton(n,pe){
+    var T=ddTabla(), c=T[0], ex=enteros()?ddExacta():null, i, j, h, s;
+    var tv=function(a,b){ return ex?menos(frTxt(ex[a][b])):f4(T[a][b]); };
+    var cx=function(a){ return tv(0,a); };
+    NC=c;
+    var kg=grado(), g=n-1;
+
+    /* tabla */
+    h="<tr><th class='lbl'>i</th><th>x"+"ᵢ"+"</th><th>f[x"+"ᵢ"+"]</th>";
+    for(j=1;j<n;j++) h+="<th>"+j+".ª dif.</th>";
+    h+="</tr>";
+    for(i=0;i<n;i++){
+      h+="<tr><td class='lbl'>"+i+"</td><td>"+fmt(X[i],4)+"</td>";
+      for(j=0;j<n;j++) h+= j<n-i ? "<td"+(i===0?" class='c0'":"")+">"+tv(i,j)+"</td>" : "<td class='nil'></td>";
+      h+="</tr>";
+    }
+    $("dd").innerHTML=h;
+    $("ddchip").textContent="coeficientes = primera fila";
+
+    /* cada casilla */
+    s="";
+    for(j=1;j<n;j++){
+      s+="<h3>"+(n-j===1?ORD1[j]:ORD[j])+"</h3>";
+      for(i=0;i<n-j;i++){
+        var nodos=[]; for(var q=i;q<=i+j;q++) nodos.push(fmt(X[q],4));
+        s+="<div>f["+nodos.join(", ")+"] = ("+tv(i+1,j-1)+" − "+par(tv(i,j-1))+") / ("+fmt(X[i+j],4)+" − "+par(menos(fmt(X[i],4)))+") = <b>"+tv(i,j)+"</b></div>";
+      }
+    }
+    s+="<p>El denominador es la resta de los x de los <b>extremos</b> del grupo, no de dos nodos vecinos.</p>";
+    $("ddsteps").innerHTML=s;
+
+    /* polinomio en forma de Newton */
+    $("polynew").textContent="P"+sb(g)+"(x) = "+newtonTxt(c,cx,g);
+
+    /* pasos: término por término */
+    $("sumchip").className="chip ok";
+    $("sumchip").textContent="P"+sb(g)+"("+fmt(xe,2)+") = suma de "+n+" términos";
+    h="<tr><th class='lbl'>k</th><th>coeficiente</th><th class='lbl'>producto (x − x"+"ⱼ"+")</th><th>término</th><th>suma P"+"ₖ"+"("+fmt(xe,2)+")</th></tr>";
+    var prod=1, acum=0, parciales=[];
+    for(i=0;i<n;i++){
+      var fac=[]; for(j=0;j<i;j++) fac.push("("+fmt(xe,4)+" − "+par(menos(fmt(X[j],4)))+")");
+      var term=c[i]*prod; acum+=term; parciales.push(acum);
+      h+="<tr"+(i===n-1?" class='sum'":"")+"><td class='lbl'>"+i+"</td><td>"+tv(0,i)+"</td><td class='frm'>"+(i?fac.join(" · ")+" = "+f4(prod):"1")+"</td><td>"+f4(term)+"</td><td class='acc'>"+f4(acum)+"</td></tr>";
+      prod*=(xe-X[i]);
+    }
+    $("steps").innerHTML=h;
+
+    /* evaluación anidada */
+    var b=c[g];
+    h="<tr><th class='lbl'>paso</th><th class='lbl'>operación</th><th>valor</th></tr>";
+    h+="<tr><td class='lbl'>b"+sb(g)+"</td><td class='frm'>c"+sb(g)+"</td><td>"+f4(b)+"</td></tr>";
+    for(i=g-1;i>=0;i--){
+      var nb=c[i]+(xe-X[i])*b;
+      h+="<tr"+(i===0?" class='sum'":"")+"><td class='lbl'>b"+sb(i)+"</td><td class='frm'>c"+sb(i)+" + (x − x"+sb(i)+")·b"+sb(i+1)+" = "+f4(c[i])+" + ("+f4(xe-X[i])+")·("+f4(b)+")</td><td"+(i===0?" class='acc'":"")+">"+f4(nb)+"</td></tr>";
+      b=nb;
+    }
+    $("nest").innerHTML=h;
+    $("nestchip").textContent=g+" multiplicaciones y "+g+" sumas";
+
+    /* grado por grado */
+    var d="<span>Grado</span>";
+    for(i=1;i<=g;i++) d+="<button data-k='"+i+"'"+(i===kg?" class='on'":"")+">P"+sb(i)+" · "+(i+1)+" puntos</button>";
+    $("degs").innerHTML=d;
+    Array.prototype.forEach.call($("degs").querySelectorAll("button"),function(bt){
+      bt.onclick=function(){ var k=+bt.getAttribute("data-k"); DEG=(k>=X.length-1)?null:k; render(); };
+    });
+    h="<tr><th class='lbl'>grado</th><th class='lbl'>puntos que usa</th><th>P"+"ₖ"+"("+fmt(xe,2)+")</th><th>cambio al subir de grado</th></tr>";
+    for(i=1;i<=g;i++){
+      var usados=[]; for(j=0;j<=i;j++) usados.push(fmt(X[j],4));
+      var dif=parciales[i]-parciales[i-1];
+      h+="<tr"+(i===kg?" class='sum'":"")+"><td class='lbl'>"+i+"</td><td class='frm'>x = "+usados.join(", ")+"</td><td class='acc'>"+f4(parciales[i])+"</td><td>"+(i>1?(dif>=0?"+":"−")+f4(Math.abs(dif)):"—")+"</td></tr>";
+    }
+    $("degtable").innerHTML=h;
+    $("deg1").textContent=kg;
+    $("lg-full").hidden=!(kg<g); $("lg-open").hidden=!(kg<g);
+  }
+
+  buildNodes(); render();
+})();
+</script>
+
+</body>
+</html>
